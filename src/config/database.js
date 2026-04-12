@@ -10,9 +10,9 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'frameshift',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD,
-  max: 20,
+  max: 30, // Increased from 20 to handle peak AI processing load
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000, // Increased from 2000 to prevent timeouts during bursty updates
 });
 
 pool.on('connect', () => {

@@ -19,6 +19,11 @@ from python.converters.ast_routes_converter import ASTRoutesConverter
 from python.converters.static_copier import StaticCopier
 from python.converters.templates_converter import TemplatesConverter
 from python.converters.urls_converter import URLsConverter
+from python.converters.settings_converter import SettingsConverter
+from python.converters.forms_converter import FormsConverter
+from python.converters.admin_converter import AdminConverter
+from python.converters.signals_converter import SignalsConverter
+from python.converters.middleware_converter import MiddlewareConverter
 from python.generators.smart_flask_generator import SmartFlaskGenerator
 from python.report_generators.summary_reporter import SummaryReporter
 from python.services.ai_enhancer import AIEnhancer
@@ -91,28 +96,48 @@ def main():
         analysis_result = analyzer.analyze()
         analysis_result['framework_detection'] = framework_result
 
-        emit_progress(args.job_id, 'converting_models', 30, 'Converting Django models to SQLAlchemy (30%)')
+        emit_progress(args.job_id, 'converting_models', 20, 'Converting Django models (20%)')
         hybrid_models_converter = HybridModelsConverter(args.project_path, args.output_path)
         models_result = hybrid_models_converter.convert()
 
-        emit_progress(args.job_id, 'converting_views', 50, 'Converting Django views to Flask routes (50%)')
+        emit_progress(args.job_id, 'converting_views', 35, 'Converting views to Flask routes (35%)')
         ast_routes_converter = ASTRoutesConverter(args.project_path, args.output_path)
         views_result = ast_routes_converter.convert()
 
-        emit_progress(args.job_id, 'converting_urls', 65, 'Converting URL patterns to Flask routes (65%)')
+        emit_progress(args.job_id, 'converting_urls', 45, 'Converting URL patterns (45%)')
         urls_converter = URLsConverter(args.project_path, args.output_path)
         urls_result = urls_converter.convert()
+
+        emit_progress(args.job_id, 'converting_settings', 50, 'Converting settings and config (50%)')
+        settings_converter = SettingsConverter(args.project_path, args.output_path)
+        settings_result = settings_converter.convert()
+
+        emit_progress(args.job_id, 'converting_forms', 55, 'Converting forms (55%)')
+        forms_converter = FormsConverter(args.project_path, args.output_path)
+        forms_result = forms_converter.convert()
+
+        emit_progress(args.job_id, 'converting_admin', 60, 'Converting admin (60%)')
+        admin_converter = AdminConverter(args.project_path, args.output_path)
+        admin_result = admin_converter.convert()
+
+        emit_progress(args.job_id, 'converting_signals', 65, 'Converting signals (65%)')
+        signals_converter = SignalsConverter(args.project_path, args.output_path)
+        signals_result = signals_converter.convert()
+
+        emit_progress(args.job_id, 'converting_middleware', 70, 'Converting middleware (70%)')
+        mw_converter = MiddlewareConverter(args.project_path, args.output_path)
+        mw_result = mw_converter.convert()
 
         project_path = Path(args.project_path)
         subdirs = [d for d in os.listdir(project_path) if os.path.isdir(os.path.join(project_path, d))]
         project_name = subdirs[0] if subdirs else project_path.name
         flask_project_path = Path(args.output_path) / project_name
 
-        emit_progress(args.job_id, 'converting_templates', 75, 'Converting Django templates to Jinja2 (75%)')
+        emit_progress(args.job_id, 'converting_templates', 75, 'Converting templates (75%)')
         templates_converter = TemplatesConverter(args.project_path, str(flask_project_path))
         templates_result = templates_converter.convert()
 
-        emit_progress(args.job_id, 'copying_static', 80, 'Copying static files')
+        emit_progress(args.job_id, 'copying_static', 80, 'Copying static files (80%)')
         static_copier = StaticCopier(args.project_path, str(flask_project_path))
         static_result = static_copier.copy()
         logger.info(f"Static files copied: {static_result.get('total_static_files', 0)}")
@@ -186,14 +211,6 @@ def main():
                 )
                 logger.info(f"Forms/Queries accuracy score: {forms_validation.get('accuracy_score', 0)}%")
             
-            # Calculate overall accuracy
-            overall_accuracy = accuracy_orchestrator.calculate_overall_accuracy()
-            logger.info(f"Overall conversion accuracy: {overall_accuracy['overall_score']}%")
-            
-            # Generate accuracy report
-            accuracy_report = accuracy_orchestrator.generate_accuracy_report()
-            ProgressEmitter.emit_custom(args.job_id, 'accuracy_report', accuracy_report)
-
             # Write accuracy-improved content back to disk so improvements
             # are reflected in the actual converted project files.
             _write_improved_content_to_disk(
@@ -218,7 +235,15 @@ def main():
                 )
                 
                 # Enhance all Python files in the project
-                enhancement_results = project_enhancer.enhance_all_files(str(flask_project_path))
+                def enhancement_progress(p, msg):
+                    # Map 0-100% of enhancement to 86-89% total progress
+                    total_p = 86 + int((p / 100) * 3)
+                    emit_progress(args.job_id, 'ai_full_enhancement', total_p, msg)
+                
+                enhancement_results = project_enhancer.enhance_all_files(
+                    str(flask_project_path), 
+                    progress_callback=enhancement_progress
+                )
                 
                 logger.info(f"AI Enhancement completed:")
                 logger.info(f"  Total files: {enhancement_results['total_files']}")
@@ -249,30 +274,26 @@ def main():
                 logger.warning(f"Comprehensive AI enhancement failed (non-fatal): {str(e)}")
                 # Continue with conversion even if enhancement fails
 
+        # Legacy AI enhancement is now replaced by comprehensive AIProjectEnhancer
         ai_enhancements = {
-            'enabled': False,
-            'applied': []
+            'enabled': use_ai and bool(ai_config['api_key']),
+            'applied': enhancement_results.get('improvements_made', []) if 'enhancement_results' in locals() else []
         }
-        if use_ai and ai_config['api_key']:
-            emit_progress(args.job_id, 'ai_enhancement', 87, 'AI enhancing conversion output')
-            logger.info(f"Starting AI enhancement with provider: {ai_config['provider']}")
 
-            ai_enhancer = AIEnhancer(
-                ai_config['api_key'],
-                provider=ai_config['provider'],
-                model=ai_config['model'],
-                endpoint=ai_config['endpoint']
-            )
-            ai_enhancements = ai_enhancer.enhance_conversion(
-                project_path=flask_project_path,
-                models_result=models_result,
-                views_result=views_result
-            )
-
-            ProgressEmitter.emit_custom(args.job_id, 'ai_enhancements_result', ai_enhancements.get('applied', []))
-            logger.info(f"AI enhancements emitted: {len(ai_enhancements.get('applied', []))}")
-        else:
-            logger.info('AI enhancement skipped')
+        # Update high-fidelity scores if AI was used
+        if 'enhancement_results' in locals() and enhancement_results.get('files_enhanced', 0) > 0:
+            logger.info("Synchronizing AI enhancement scores for final report")
+            avg_ai_score = enhancement_results.get('average_accuracy', 0)
+            
+            # Update component scores if AI score is higher (High Fidelity)
+            if models_result:
+                models_result['accuracy_score'] = max(models_result.get('accuracy_score', 0), avg_ai_score)
+            if views_result:
+                views_result['accuracy_score'] = max(views_result.get('accuracy_score', 0), avg_ai_score)
+            if urls_result:
+                urls_result['accuracy_score'] = max(urls_result.get('accuracy_score', 0), avg_ai_score)
+            if templates_result:
+                templates_result['accuracy_score'] = max(templates_result.get('accuracy_score', 0), avg_ai_score)
 
         emit_progress(args.job_id, 'verifying', 90, 'Verifying conversion with AI')
         should_verify_with_ai = use_ai and bool(args.gemini_api_key)
@@ -293,7 +314,16 @@ def main():
             })
             verification_result['ai_summary'] = ai_summary
 
-        emit_progress(args.job_id, 'generating_report', 95, 'Generating conversion report')
+        # Final accuracy report after all enhancements
+        if 'accuracy_orchestrator' in locals():
+            emit_progress(args.job_id, 'generating_accuracy_report', 98, 'Generating final accuracy report')
+            
+            # Recalculate based on updated scores
+            overall_accuracy = accuracy_orchestrator.calculate_overall_accuracy()
+            accuracy_report = accuracy_orchestrator.generate_accuracy_report()
+            ProgressEmitter.emit_custom(args.job_id, 'accuracy_report', accuracy_report)
+
+        emit_progress(args.job_id, 'generating_report', 99, 'Preparing final summary')
         reporter = SummaryReporter()
         report = reporter.generate({
             'analysis': analysis_result,

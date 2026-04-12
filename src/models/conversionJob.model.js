@@ -175,21 +175,28 @@ export class ConversionJobModel {
    * @returns {Promise<Object>} Updated conversion job
    */
   static async updateProgress(id, percentage, step) {
-    const result = await query(
-      `UPDATE conversion_jobs
-       SET progress_percentage = CASE
-             WHEN $1 > progress_percentage THEN $1
-             ELSE progress_percentage
-           END,
-           current_step = $2,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3
-         AND status NOT IN ('completed', 'validated', 'failed')
-       RETURNING *`,
-      [percentage, step, id]
-    );
+    try {
+      const result = await query(
+        `UPDATE conversion_jobs
+         SET progress_percentage = CASE
+               WHEN $1 > progress_percentage THEN $1
+               ELSE progress_percentage
+             END,
+             current_step = $2,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3
+           AND status NOT IN ('completed', 'validated', 'failed')
+         RETURNING *`,
+        [percentage, step, id]
+      );
 
-    return result.rows[0];
+      return result.rows[0];
+    } catch (error) {
+      // Non-fatal: log the error but don't crash the background process
+      // This prevents the whole migration from failing just because a progress update timed out
+      logger.error(`Failed to update progress for job ${id} (non-fatal): ${error.message}`);
+      return null;
+    }
   }
 
   /**

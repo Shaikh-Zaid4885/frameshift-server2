@@ -5,25 +5,48 @@ import sys
 class ProgressEmitter:
     """Emit progress updates to Node.js via stdout"""
 
+    _last_progress = -1
+    _last_step = None
+    _last_emit_time = 0
+
     @staticmethod
     def emit(job_id, step, progress, message):
         """
-        Emit progress update
-
+        Emit progress update with throttling to avoid overwhelming the database.
+        
         Args:
             job_id (str): Conversion job ID
             step (str): Current step name
             progress (int): Progress percentage (0-100)
             message (str): Status message
         """
-        output = {
-            'type': 'progress',
-            'jobId': job_id,
-            'step': step,
-            'progress': progress,
-            'message': message
-        }
-        print(json.dumps(output), flush=True)
+        import time
+        current_time = time.time()
+        
+        # Throttling logic:
+        # 1. Always emit if the step has changed
+        # 2. Always emit if it's the 100% completion
+        # 3. Otherwise, only emit if at least 500ms has passed since last update
+        #    AND the progress has actually changed.
+        time_elapsed = current_time - ProgressEmitter._last_emit_time
+        
+        if (step != ProgressEmitter._last_step or 
+            progress >= 100 or 
+            (time_elapsed > 0.5 and progress != ProgressEmitter._last_progress)):
+            
+            output = {
+                'type': 'progress',
+                'jobId': job_id,
+                'step': step,
+                'progress': progress,
+                'message': message
+            }
+            print(json.dumps(output), flush=True)
+            
+            # Update state
+            ProgressEmitter._last_progress = progress
+            ProgressEmitter._last_step = step
+            ProgressEmitter._last_emit_time = current_time
 
     @staticmethod
     def emit_result(data):
