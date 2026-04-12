@@ -4,12 +4,21 @@ import logger from '../utils/logger.js';
 const { Pool } = pg;
 
 // Create PostgreSQL connection pool
+const poolConfig = process.env.DATABASE_URL
+  ? {
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    }
+  : {
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT) || 5432,
+      database: process.env.DB_NAME || 'frameshift',
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD,
+    };
+
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME || 'frameshift',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD,
+  ...poolConfig,
   max: 30, // Increased from 20 to handle peak AI processing load
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000, // Increased from 2000 to prevent timeouts during bursty updates
