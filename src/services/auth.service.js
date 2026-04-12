@@ -100,14 +100,11 @@ class AuthService {
       60 * 24
     );
 
-    // Send welcome email with verification link
-    try {
-      await emailService.sendWelcomeEmail(this.sanitizeUser(user), verificationToken.token);
-      logger.info(`Welcome email sent to user: ${user.id}`);
-    } catch (error) {
-      logger.error(`Failed to send welcome email to ${email} (User ID: ${user.id}):`, error);
-      // We don't throw here to avoid failing registration if only email fails
-    }
+    // Send welcome email with verification link (background)
+    emailService.sendWelcomeEmail(this.sanitizeUser(user), verificationToken.token)
+      .then(() => logger.info(`Welcome email sent to user: ${user.id}`))
+      .catch((error) => logger.error(`Failed to send welcome email to ${email} (User ID: ${user.id}):`, error));
+
 
     // Generate JWT token
     const token = this.generateToken({
