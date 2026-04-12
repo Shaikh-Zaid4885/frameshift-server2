@@ -62,10 +62,10 @@ class RoutesAccuracyImprover:
         """
         improved = django_code
         
-        # Fix view function signature
+        # Fix view function signature — remove `request` parameter (Flask uses the global `request`)
         improved = re.sub(
-            r"def view\(request(?:,\s*([^)]+))?\)",
-            lambda m: f"def view({m.group(1) or ''}):",
+            r"def (\w+)\(request(?:,\s*([^)]+))?\)",
+            lambda m: f"def {m.group(1)}({m.group(2) or ''}):" if m.group(2) else f"def {m.group(1)}():",
             improved
         )
         

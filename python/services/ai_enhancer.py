@@ -136,6 +136,13 @@ class AIEnhancer:
             fixed_content = self._enhance_models_with_ai(content, models_file.name)
 
             if fixed_content and fixed_content != content:
+                # Safety: validate enhanced code compiles before overwriting
+                try:
+                    compile(fixed_content, str(models_file), 'exec')
+                except SyntaxError as e:
+                    logger.warning(f"[AI] Rejecting enhanced models in {models_file.name}: syntax error: {e}")
+                    return
+
                 # Backup original
                 backup_file = models_file.with_suffix('.py.backup')
                 backup_file.write_text(content, encoding='utf-8')
@@ -204,6 +211,13 @@ IMPORTANT: Return ONLY the fixed Python code. No explanations, no markdown code 
             )
 
             if implemented_content and implemented_content != content:
+                # Safety: validate enhanced code compiles before overwriting
+                try:
+                    compile(implemented_content, str(routes_file), 'exec')
+                except SyntaxError as e:
+                    logger.warning(f"[AI] Rejecting enhanced routes in {routes_file.name}: syntax error: {e}")
+                    return
+
                 # Backup original
                 backup_file = routes_file.with_suffix('.py.backup')
                 backup_file.write_text(content, encoding='utf-8')
@@ -275,6 +289,19 @@ IMPORTANT: Return ONLY the final fixed Python code. No explanations, no markdown
             fixed_content = self._enhance_generic_file_with_ai(content, file_path.name)
             
             if fixed_content and fixed_content != content:
+                # Safety: validate enhanced code compiles before overwriting (.py files)
+                if file_path.suffix == '.py':
+                    try:
+                        compile(fixed_content, str(file_path), 'exec')
+                    except SyntaxError as e:
+                        logger.warning(f"[AI] Rejecting enhanced {file_path.name}: syntax error: {e}")
+                        return
+
+                # Safety: reject if AI returned something too short
+                if len(fixed_content.strip()) < 10:
+                    logger.warning(f"[AI] Rejecting enhanced {file_path.name}: content too short")
+                    return
+
                 # Backup original
                 backup_file = file_path.with_suffix('.backup')
                 backup_file.write_text(content, encoding='utf-8')

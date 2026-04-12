@@ -869,6 +869,178 @@ except ImportError:
         ])
         return body
 
+    def _translate_raw_code_to_flask(self, raw_code: str) -> Optional[List[str]]:
+        """Attempt a line-by-line translation of common Django patterns to Flask.
+
+        Returns a list of translated lines, or None if translation was not possible
+        (indicating the caller should use the commented-original fallback).
+        """
+        if not raw_code or not raw_code.strip():
+            return None
+
+        lines = raw_code.splitlines()
+        translated = []
+        had_meaningful_translation = False
+
+        # Skip the function definition line itself (def func(request, ...):)
+        start_idx = 0
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith('def ') and stripped.endswith(':'):
+                start_idx = i + 1
+                break
+
+        for line in lines[start_idx:]:
+            stripped = line.strip()
+
+            # Skip empty lines and comments — pass through
+            if not stripped or stripped.startswith('#'):
+                translated.append(stripped)
+                continue
+
+            new_line = stripped
+
+            # --- Django import replacements ---
+            if re.match(r'from django\.contrib import messages', stripped):
+                new_line = 'from flask import flash'
+                had_meaningful_translation = True
+                translated.append(new_line)
+                continue
+            if re.match(r'from django\.shortcuts import .*get_object_or_404', stripped):
+                new_line = '# get_object_or_404: use Model.query.get_or_404(id)'
+                had_meaningful_translation = True
+                translated.append(new_line)
+                continue
+            if re.match(r'from django\.', stripped):
+                new_line = f'# {stripped}  # TODO: replace Django import'
+                translated.append(new_line)
+                continue
+
+            # --- Common Django → Flask one-liner translations ---
+
+            # get_object_or_404(Model, pk=val) → Model.query.get_or_404(val)
+            m = re.match(r'(\w+)\s*=\s*get_object_or_404\((\w+),\s*pk\s*=\s*(\w+)\)', stripped)
+            if m:
+                new_line = f"{m.group(1)} = {m.group(2)}.query.get_or_404({m.group(3)})"
+                had_meaningful_translation = True
+
+            # get_object_or_404(Model, id=val)
+            m = re.match(r'(\w+)\s*=\s*get_object_or_404\((\w+),\s*id\s*=\s*(\w+)\)', stripped)
+            if m:
+                new_line = f"{m.group(1)} = {m.group(2)}.query.get_or_404({m.group(3)})"
+                had_meaningful_translation = True
+
+            # HttpResponseRedirect(reverse('name')) → redirect(url_for('name'))
+            m = re.match(r'return\s+HttpResponseRedirect\(reverse\([\'"](\w+)[\'"]\)\)', stripped)
+            if m:
+                new_line = f"return redirect(url_for('{m.group(1)}'))"
+                had_meaningful_translation = True
+
+            # HttpResponse('text') → return 'text'
+            m = re.match(r'return\s+HttpResponse\([\'"](.+?)[\'"]\)', stripped)
+            if m:
+                new_line = f"return '{m.group(1)}'"
+                had_meaningful_translation = True
+
+            # JsonResponse({...}) → jsonify({...})
+            new_line = re.sub(r'JsonResponse\(', 'jsonify(', new_line)
+            if 'jsonify(' in new_line and 'JsonResponse' not in stripped:
+                had_meaningful_translation = True
+
+            # messages.success(request, '...') → flash('...', 'success')
+            m = re.match(r"messages\.(success|error|info|warning)\(request,\s*(.+)\)", stripped)
+            if m:
+                new_line = f"flash({m.group(2)}, '{m.group(1)}')"
+                had_meaningful_translation = True
+
+            # request.POST.get('field') → request.form.get('field')
+            new_line = new_line.replace('request.POST.get(', 'request.form.get(')
+            new_line = new_line.replace('request.POST[', 'request.form[')
+            new_line = new_line.replace('request.GET.get(', 'request.args.get(')
+            new_line = new_line.replace('request.GET[', 'request.args[')
+            if 'request.form' in new_line or 'request.args' in new_line:
+                had_meaningful_translation = True
+
+            # request.FILES → request.files
+            new_line = new_line.replace('request.FILES', 'request.files')
+            if 'request.files' in new_line and 'request.FILES' in stripped:
+                had_meaningful_translation = True
+
+            # request.user → current_user
+            new_line = new_line.replace('request.user', 'current_user')
+
+            # --- ORM translations ---
+
+            # .objects.all() → .query.all()
+            new_line = re.sub(r'(\w+)\.objects\.all\(\)', r'\1.query.all()', new_line)
+            # .objects.get(pk=x) → .query.get(x)
+            new_line = re.sub(r'(\w+)\.objects\.get\(pk=(\w+)\)', r'\1.query.get(\2)', new_line)
+            # .objects.get(id=x) → .query.get(x)
+            new_line = re.sub(r'(\w+)\.objects\.get\(id=(\w+)\)', r'\1.query.get(\2)', new_line)
+            # .objects.filter(...) → .query.filter_by(...)
+            new_line = re.sub(r'(\w+)\.objects\.filter\(', r'\1.query.filter_by(', new_line)
+            # .objects.exclude(...) → .query.filter(~...)
+            new_line = re.sub(r'(\w+)\.objects\.exclude\(', r'\1.query.filter(~', new_line)
+            # .objects.count() → .query.count()
+            new_line = re.sub(r'(\w+)\.objects\.count\(\)', r'\1.query.count()', new_line)
+            # .objects.exists() → .query.first() is not None
+            new_line = re.sub(r'(\w+)\.objects\.exists\(\)', r'\1.query.first() is not None', new_line)
+            # .objects.order_by(...) → .query.order_by(...)
+            new_line = re.sub(r'(\w+)\.objects\.order_by\(', r'\1.query.order_by(', new_line)
+
+            # .objects.create(...) → db.session.add(Model(...)); db.session.commit()
+            m = re.match(r'(\w+)\s*=\s*(\w+)\.objects\.create\((.+)\)', stripped)
+            if m:
+                new_line = f"{m.group(1)} = {m.group(2)}({m.group(3)})"
+                translated.append(new_line)
+                translated.append(f"db.session.add({m.group(1)})")
+                translated.append("db.session.commit()")
+                had_meaningful_translation = True
+                continue
+
+            # obj.save() → db.session.add(obj); db.session.commit()
+            m = re.match(r'(\w+)\.save\(\)', stripped)
+            if m:
+                translated.append(f"db.session.add({m.group(1)})")
+                translated.append("db.session.commit()")
+                had_meaningful_translation = True
+                continue
+
+            # obj.delete() → db.session.delete(obj); db.session.commit()
+            m = re.match(r'(\w+)\.delete\(\)', stripped)
+            if m:
+                translated.append(f"db.session.delete({m.group(1)})")
+                translated.append("db.session.commit()")
+                had_meaningful_translation = True
+                continue
+
+            # render(request, 'template.html', context) → render_template('template.html', **context)
+            m = re.match(r"return\s+render\(request,\s*['\"](.+?)['\"](?:,\s*(.+))?\)", stripped)
+            if m:
+                if m.group(2):
+                    new_line = f"return render_template('{m.group(1)}', **{m.group(2)})"
+                else:
+                    new_line = f"return render_template('{m.group(1)}')"
+                had_meaningful_translation = True
+
+            # redirect(reverse('name')) → redirect(url_for('name'))
+            new_line = re.sub(r"redirect\(reverse\(['\"](\w+)['\"]\)\)", r"redirect(url_for('\1'))", new_line)
+
+            # with transaction.atomic(): → try/except pattern
+            if 'transaction.atomic' in stripped:
+                translated.append("try:")
+                had_meaningful_translation = True
+                continue
+
+            if new_line != stripped:
+                had_meaningful_translation = True
+
+            translated.append(new_line)
+
+        if had_meaningful_translation and translated:
+            return translated
+
+        return None
 
 # Backward compatibility
 class RoutesConverter(ASTRoutesConverter):

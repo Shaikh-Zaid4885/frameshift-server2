@@ -120,7 +120,7 @@ class AccuracyImprovementsOrchestrator:
         Apply URL pattern accuracy improvements
         Returns: improved URLs, improved views, validation
         """
-        improved_urls = original
+        improved_urls = converted
         improved_views = view_code
         
         # Apply improvements

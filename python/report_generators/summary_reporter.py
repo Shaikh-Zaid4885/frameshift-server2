@@ -156,7 +156,7 @@ class SummaryReporter:
         if weight == 0:
             return {'score': 0.0, 'weight': 0}
 
-        direct_accuracy = component.get('accuracy')
+        direct_accuracy = component.get('accuracy') or component.get('accuracy_score')
         if isinstance(direct_accuracy, (int, float)):
             score = float(direct_accuracy)
             failed_entries = [

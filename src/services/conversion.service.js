@@ -477,7 +477,8 @@ export class ConversionService {
         passed: false,
         issues: ['Converted project directory could not be located.'],
         warnings,
-        filesChecked: 0
+        filesChecked: 0,
+        qualityMetrics: {}
       };
     }
 
@@ -497,11 +498,88 @@ export class ConversionService {
       issues.push(...compileResult.errors);
     }
 
+    // --- Additional quality checks ---
+    let djangoImportCount = 0;
+    let placeholderCount = 0;
+    let todoCount = 0;
+    let flaskPatternCount = 0;
+    const filesWithDjangoImports = [];
+    const filesWithPlaceholders = [];
+
+    for (const filePath of pythonFiles) {
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+
+        // Check for remaining Django imports
+        const djangoImports = (content.match(/^\s*(?:from|import)\s+django/gm) || []).length;
+        if (djangoImports > 0) {
+          djangoImportCount += djangoImports;
+          filesWithDjangoImports.push(path.relative(projectPath, filePath));
+        }
+
+        // Check for placeholder / stub content
+        const placeholders = (content.match(
+          /return\s+['"]Hello from|return\s+['"]Not yet implemented|'Operation completed'|\bpass\b/g
+        ) || []).length;
+        if (placeholders > 0) {
+          placeholderCount += placeholders;
+          filesWithPlaceholders.push(path.relative(projectPath, filePath));
+        }
+
+        // Count TODO comments
+        todoCount += (content.match(/#\s*TODO/gi) || []).length;
+
+        // Count Flask patterns (positive signal)
+        flaskPatternCount += (content.match(
+          /@\w+\.route|Blueprint\(|render_template\(|db\.Column|db\.Model|db\.relationship/g
+        ) || []).length;
+
+      } catch {
+        // Skip unreadable files
+      }
+    }
+
+    if (djangoImportCount > 0) {
+      warnings.push(
+        `${djangoImportCount} Django import(s) still present in ${filesWithDjangoImports.length} file(s): ${filesWithDjangoImports.slice(0, 5).join(', ')}${filesWithDjangoImports.length > 5 ? '...' : ''}`
+      );
+    }
+
+    if (placeholderCount > 0) {
+      warnings.push(
+        `${placeholderCount} placeholder/stub pattern(s) detected in ${filesWithPlaceholders.length} file(s) — these views need full implementation.`
+      );
+    }
+
+    if (todoCount > 0) {
+      warnings.push(
+        `${todoCount} TODO comment(s) remaining in the converted project — manual attention required.`
+      );
+    }
+
+    // Compute quality score
+    let qualityScore = 100;
+    qualityScore -= Math.min(djangoImportCount * 8, 30);
+    qualityScore -= Math.min(placeholderCount * 4, 20);
+    qualityScore -= Math.min(todoCount * 2, 10);
+    qualityScore += Math.min(flaskPatternCount, 15);
+    if (!compileResult.success) qualityScore -= 15;
+    qualityScore = Math.max(0, Math.min(100, qualityScore));
+
     return {
       passed: issues.length === 0,
       issues,
       warnings,
-      filesChecked: pythonFiles.length
+      filesChecked: pythonFiles.length,
+      qualityMetrics: {
+        qualityScore,
+        djangoImportCount,
+        placeholderCount,
+        todoCount,
+        flaskPatternCount,
+        filesWithDjangoImports,
+        filesWithPlaceholders
+      }
     };
   }
 
