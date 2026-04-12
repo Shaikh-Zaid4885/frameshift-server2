@@ -39,6 +39,8 @@ temp/
 tmp/
 storage/projects/*
 !storage/projects/.gitkeep
+storage/converted/
+storage/uploads/
 
 # Mac OS folder attributes
 .DS_Store
