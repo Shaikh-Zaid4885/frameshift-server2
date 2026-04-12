@@ -49,7 +49,7 @@ app.use(helmet());
 const allowedOrigins = new Set([
   'http://localhost:3001',
   'http://127.0.0.1:3001',
-  process.env.FRONTEND_URL,
+  process.env.FRONTEND_URL?.replace(/\/$/, ''),
 ].filter(Boolean));
 
 app.use(cors({
