@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to FrameShift! 🚀</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 20px; text-align: center; border-radius: 8px 8px 0 0; }
+    .content { background: #ffffff; padding: 30px; border-radius: 0 0 8px 8px; border: 1px solid #eee; }
+    .footer { text-align: center; margin-top: 30px; color: #777; font-size: 14px; }
+    .button { display: inline-block; padding: 14px 35px; background: #667eea; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 25px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .info-box { background-color: #f8f9ff; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin:0;">Welcome to FrameShift! 🚀</h1>
+    </div>
+    <div class="content">
+      <p>Hi {{name}},</p>
+      <p>Thank you for signing up for <strong>FrameShift</strong>! We're excited to help you transform your Django projects into modern Flask applications with AI precision.</p>
+      
+      <div class="info-box">
+        <p style="margin:0;"><strong>Registered Email:</strong> {{email}}</p>
+      </div>
+
+      <p>Before you get started, please verify your email address by clicking the button below:</p>
+      
+      <div style="text-align: center;">
+        <a href="{{verificationUrl}}" class="button">Verify My Email</a>
+      </div>
+
+      <p>This link will remain active for 24 hours. If the button doesn't work, you can copy and paste this URL into your browser:</p>
+      <p style="word-break: break-all; color: #667eea; font-size: 13px;">{{verificationUrl}}</p>
+      
+      <p>Happy migrating!<br>The FrameShift Team</p>
+    </div>
+    <div class="footer">
+      <p>© 2026 FrameShift - The Ultimate Django to Flask Migration Tool</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -8,11 +8,14 @@ import logger from '../utils/logger.js';
  * @param {Function} next - Express next function
  */
 export const errorHandler = (err, req, res, next) => {
-  // Log error
-  logger.error(err.message, { error: err, stack: err.stack });
-
-  // Determine status code
   const statusCode = err.statusCode || 500;
+  
+  // Log error based on status code
+  if (statusCode >= 500) {
+    logger.error(`[500] INTERNAL ERROR: ${err.message}`, { path: req.originalUrl, stack: err.stack });
+  } else {
+    logger.warn(`[${statusCode}] CLIENT ERROR: ${err.message}`, { path: req.originalUrl });
+  }
   const errorCode = err.code || (statusCode >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR');
 
   // Send error response
