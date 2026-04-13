@@ -452,10 +452,21 @@ export class ConversionService {
       issues.push(...validation.issues);
     }
 
+    // Downgrade accuracy score if validation failed
+    const currentReport = await ReportModel.findByConversionJobId(jobId);
+    let newAccuracy = currentReport?.accuracy_score || 0;
+    
+    if (!validation.passed) {
+        // Apply a heavy penalty for failed validation (syntax errors etc)
+        newAccuracy = Math.max(0, Math.min(newAccuracy, 60.0) - 10.0);
+        logger.warning(`Downgrading accuracy score for job ${jobId} to ${newAccuracy} due to validation failure`);
+    }
+
     suggestions.push('Review generated Flask entry points, route registration, and syntax errors before trusting this conversion output.');
     summaryParts.push('Post-conversion validation failed. The conversion output is not considered reliable.');
 
     await ReportModel.updateByConversionId(jobId, {
+      accuracy_score: newAccuracy,
       issues,
       warnings,
       suggestions,

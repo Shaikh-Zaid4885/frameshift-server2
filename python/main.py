@@ -285,15 +285,26 @@ def main():
             logger.info("Synchronizing AI enhancement scores for final report")
             avg_ai_score = enhancement_results.get('average_accuracy', 0)
             
-            # Update component scores if AI score is higher (High Fidelity)
+            # Penalize average score based on critical issues found during save/validation
+            critical_issues = [i for i in enhancement_results.get('issues_found', []) if i.get('severity') == 'critical']
+            if critical_issues:
+                penalty = min(len(critical_issues) * 10.0, 40.0) # Progressive penalty up to 40%
+                logger.warning(f"Applying accuracy penalty of {penalty}% due to {len(critical_issues)} critical AI enhancement issues")
+                avg_ai_score = max(0, avg_ai_score - penalty)
+
+            # Update component scores using weighted average (70% heuristic, 30% AI)
+            # This prevents AI self-grading from completely overriding deterministic checks
+            def blend_score(base_score, ai_score):
+                return (base_score * 0.7) + (ai_score * 0.3)
+
             if models_result:
-                models_result['accuracy_score'] = max(models_result.get('accuracy_score', 0), avg_ai_score)
+                models_result['accuracy_score'] = blend_score(models_result.get('accuracy_score', 0), avg_ai_score)
             if views_result:
-                views_result['accuracy_score'] = max(views_result.get('accuracy_score', 0), avg_ai_score)
+                views_result['accuracy_score'] = blend_score(views_result.get('accuracy_score', 0), avg_ai_score)
             if urls_result:
-                urls_result['accuracy_score'] = max(urls_result.get('accuracy_score', 0), avg_ai_score)
+                urls_result['accuracy_score'] = blend_score(urls_result.get('accuracy_score', 0), avg_ai_score)
             if templates_result:
-                templates_result['accuracy_score'] = max(templates_result.get('accuracy_score', 0), avg_ai_score)
+                templates_result['accuracy_score'] = blend_score(templates_result.get('accuracy_score', 0), avg_ai_score)
 
         emit_progress(args.job_id, 'verifying', 90, 'Verifying conversion with AI')
         should_verify_with_ai = use_ai and bool(args.gemini_api_key)

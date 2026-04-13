@@ -170,19 +170,22 @@ class AIProjectEnhancer:
         # Safety: validate enhanced code compiles before accepting it
         if enhanced_content and enhanced_content != content and file_path.endswith('.py'):
             try:
+                # Use a stricter compilation check
                 compile(enhanced_content, file_path, 'exec')
             except SyntaxError as e:
-                # AI produced invalid code — keep original
-                improvements.append(f'AI enhancement rejected: syntax error ({e})')
+                # AI produced invalid code — keep original and penalize score heavily
+                improvements.append(f'AI enhancement REJECTED for {file_path}: syntax error ({e})')
                 enhanced_content = content
-                accuracy_score = max(accuracy_score - 10, 0)
-
+                # Cap score at 30% if AI claimed it was better but broke the code
+                accuracy_score = min(accuracy_score, 30.0)
+                
         # Safety: if AI returned empty or very short content, keep original
         if not enhanced_content or len(enhanced_content.strip()) < 10:
             enhanced_content = content
             improvements.append('AI returned empty/trivial content — kept original')
+            accuracy_score = min(accuracy_score, 50.0) # Penalty for useless response
 
-        return enhanced_content, accuracy_score, improvements
+        return enhanced_content, float(accuracy_score), improvements
 
     def _build_enhancement_prompt(self, content: str, file_type: str, file_path: str) -> str:
         """Build AI enhancement prompt"""
@@ -707,11 +710,13 @@ Format as JSON:
                 
                 # Try to compile to check syntax
                 try:
-                    compile(content, file_path, 'exec')
+                    if file_path.endswith('.py'):
+                        compile(content, file_path, 'exec')
                 except SyntaxError as e:
                     results['issues_found'].append({
                         'file': file_path,
-                        'error': f'Syntax error in enhanced code: {str(e)}'
+                        'error': f'CRITICAL: Syntax error in enhanced code: {str(e)}. File not saved.',
+                        'severity': 'critical'
                     })
                     failed_count += 1
                     continue

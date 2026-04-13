@@ -112,30 +112,56 @@ class SummaryReporter:
             component['score'] * component['weight'] for component in components
         ) / weighted_total
 
-        total_warnings = sum(len(component.get('warnings', [])) for component in [models, views, urls, templates])
+        all_components = [models, views, urls, templates]
+        total_warnings = sum(len(c.get('warnings', [])) for c in all_components)
         warning_penalty = min(total_warnings * 2.0, 15.0)
+        
+        # Detect critical issues (syntax errors, major conversion failures)
+        critical_issues = []
+        for c in all_components:
+            critical_issues.extend([i for i in c.get('issues', []) if i.get('severity') == 'critical'])
+        
         score = base_score - warning_penalty
 
+        # Apply AI adjustments with safety caps
         score = self._apply_ai_adjustments(score, verification, ai_enhancements)
+
+        # MANDATORY CAP: If any critical issues exist, accuracy CANNOT be above 70%
+        if critical_issues:
+            logger.warning(f"Capping accuracy at 70% due to {len(critical_issues)} critical issues")
+            score = min(score, 70.0)
+
+        # Capping for failed syntax checks if present in analysis or results
+        if any(res.get('syntax_valid') is False for res in all_components):
+             score = min(score, 60.0)
 
         return round(max(0.0, min(score, 100.0)), 2)
 
     def _apply_ai_adjustments(self, score: float, verification: Dict, ai_enhancements: Dict) -> float:
-        """Apply AI bonuses without letting advisory AI review lower the deterministic score."""
+        """Apply AI bonuses conservatively. Ensure they don't mask low-quality base code."""
         adjusted_score = score
 
         applied_enhancements = ai_enhancements.get('applied', []) or []
         if ai_enhancements.get('enabled') and applied_enhancements:
-            enhancement_bonus = min(len(applied_enhancements) * 5.0, 20.0)
-            adjusted_score += enhancement_bonus
+            # Only give bonus if base score is already at least "fair" (60+)
+            if score >= 60.0:
+                enhancement_bonus = min(len(applied_enhancements) * 2.5, 15.0) # Reduced from 5.0 to 2.5
+                adjusted_score += enhancement_bonus
+            else:
+                # Penalize low-quality code even if AI was enabled
+                adjusted_score = max(0, adjusted_score - 5.0)
 
         ai_summary = verification.get('ai_summary', {}) or {}
         ai_quality = ai_summary.get('overall_quality')
         if verification.get('enabled') and isinstance(ai_quality, (int, float)):
-            # Gemini review is advisory and can be noisy when upstream stats are incomplete.
-            # Keep deterministic validation as the floor; only let AI verification improve the score.
-            blended_score = (adjusted_score * 0.7) + (float(ai_quality) * 0.3)
-            adjusted_score = max(adjusted_score, blended_score)
+            # Blend AI verification only if it's not trying to "save" a failing project
+            if float(ai_quality) > score:
+                # Use a smaller blend factor (20% instead of 30%) to be more conservative
+                blended_score = (adjusted_score * 0.8) + (float(ai_quality) * 0.2)
+                adjusted_score = max(adjusted_score, blended_score)
+            else:
+                # If AI says it's worse than we thought, believe it
+                adjusted_score = min(adjusted_score, float(ai_quality))
 
         return adjusted_score
 
